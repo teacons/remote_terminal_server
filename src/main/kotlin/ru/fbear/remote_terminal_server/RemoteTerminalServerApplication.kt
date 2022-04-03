@@ -3,6 +3,18 @@ package ru.fbear.remote_terminal_server
 import io.jsonwebtoken.ExpiredJwtException
 import io.jsonwebtoken.Jwts
 import io.jsonwebtoken.SignatureAlgorithm
+import io.swagger.v3.oas.annotations.OpenAPIDefinition
+import io.swagger.v3.oas.annotations.Operation
+import io.swagger.v3.oas.annotations.Parameter
+import io.swagger.v3.oas.annotations.Parameters
+import io.swagger.v3.oas.annotations.enums.ParameterIn
+import io.swagger.v3.oas.annotations.enums.SecuritySchemeType
+import io.swagger.v3.oas.annotations.info.Info
+import io.swagger.v3.oas.annotations.media.Content
+import io.swagger.v3.oas.annotations.responses.ApiResponse
+import io.swagger.v3.oas.annotations.responses.ApiResponses
+import io.swagger.v3.oas.annotations.security.SecurityRequirement
+import io.swagger.v3.oas.annotations.security.SecurityScheme
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.boot.autoconfigure.SpringBootApplication
 import org.springframework.boot.runApplication
@@ -40,6 +52,11 @@ import javax.servlet.http.HttpServletResponse
 import javax.servlet.http.HttpServletResponse.SC_UNAUTHORIZED
 
 
+@Configuration
+@OpenAPIDefinition(info = Info(title = "Terminal Api", version = "v1"))
+@SecurityScheme(name = "bearerAuth", type = SecuritySchemeType.HTTP, bearerFormat = "JWT", scheme = "bearer")
+class OpenApi30Config
+
 @SpringBootApplication
 class RemoteTerminalServerApplication
 
@@ -63,8 +80,38 @@ class Terminal(
     val userInfo: UserInfo
 ) {
 
-    @GetMapping("/ls")
-    @ResponseStatus(HttpStatus.OK)
+    @Operation(
+        summary = "List current directory",
+        security = [SecurityRequirement(name = "bearerAuth")]
+    )
+    @ApiResponses(
+        value = [
+            ApiResponse(
+                responseCode = "200", description = "Successful directory list"
+            ),
+            ApiResponse(
+                responseCode = "401", description = "Token expired",
+                content = [Content()]
+            ),
+            ApiResponse(
+                responseCode = "403", description = "User not authorized",
+                content = [Content()]
+            ),
+            ApiResponse(
+                responseCode = "418", description = "User session disconnected",
+                content = [Content()]
+            )
+        ]
+    )
+    @Parameters(
+        Parameter(
+            name = "Authorization",
+            `in` = ParameterIn.HEADER,
+            example = "Bearer token",
+            hidden = true
+        )
+    )
+    @GetMapping("/ls", produces = ["application/json"])
     fun ls(@RequestHeader("Authorization") authHeader: String): List<String>? {
         val username = jwtTokenUtil.extractUsername(jwtTokenUtil.prepareAuthHeader(authHeader))
         val dir = getUserDir(username)
@@ -77,13 +124,52 @@ class Terminal(
         }
     }
 
-    @GetMapping("/cd")
-    @ResponseStatus(HttpStatus.OK)
+    @Operation(
+        summary = "Change current directory",
+        security = [SecurityRequirement(name = "bearerAuth")]
+    )
+    @ApiResponses(
+        value = [
+            ApiResponse(
+                responseCode = "200", description = "Successful directory change"
+            ),
+            ApiResponse(
+                responseCode = "400", description = "Wrong directory",
+                content = [Content()]
+            ),
+            ApiResponse(
+                responseCode = "401", description = "Token expired",
+                content = [Content()]
+            ),
+            ApiResponse(
+                responseCode = "403", description = "User not authorized",
+                content = [Content()]
+            ),
+            ApiResponse(
+                responseCode = "418", description = "User session disconnected",
+                content = [Content()]
+            )
+        ]
+    )
+    @Parameters(
+        Parameter(
+            name = "dir",
+            `in` = ParameterIn.QUERY,
+            example = "C:/Users/Admin"
+        ),
+        Parameter(
+            name = "Authorization",
+            `in` = ParameterIn.HEADER,
+            example = "Bearer token",
+            hidden = true
+        )
+    )
+    @GetMapping("/cd", produces = ["application/json"])
     fun cd(
         @RequestHeader("Authorization") authHeader: String,
         @RequestParam(value = "dir", required = true)
         dirToChange: String
-    ): Map<String, String?> {
+    ): CdResponse {
         val username = jwtTokenUtil.extractUsername(jwtTokenUtil.prepareAuthHeader(authHeader))
 
         val currentDir = getUserDir(username)
@@ -100,21 +186,90 @@ class Terminal(
 
         userInfo.usersStatus[username]!!.dir = newDir
 
-        return mapOf("path" to newDir.absolutePath)
+        return CdResponse(newDir.absolutePath)
     }
 
     fun String.count(s: String): Int {
         return (this.length - this.replace(s, "").length) / s.length
     }
 
-    @GetMapping("/who")
-    @ResponseStatus(HttpStatus.OK)
+    @Operation(
+        summary = "Issuing a list of registered users indicating their current directory",
+        security = [SecurityRequirement(name = "bearerAuth")]
+    )
+    @ApiResponses(
+        value = [
+            ApiResponse(
+                responseCode = "200", description = "Successfully returned a list of user sessions"
+            ),
+            ApiResponse(
+                responseCode = "401", description = "Token expired",
+                content = [Content()]
+            ),
+            ApiResponse(
+                responseCode = "403", description = "User not authorized",
+                content = [Content()]
+            ),
+            ApiResponse(
+                responseCode = "418", description = "User session disconnected",
+                content = [Content()]
+            )
+        ]
+    )
+    @Parameters(
+        Parameter(
+            name = "Authorization",
+            `in` = ParameterIn.HEADER,
+            example = "Bearer token",
+            hidden = true
+        )
+    )
+    @GetMapping("/who", produces = ["application/json"])
     fun who(@RequestHeader("Authorization") authHeader: String): Map<String, String> {
         return userInfo.usersStatus.mapValues { it.value.dir.absolutePath }
     }
 
+    @Operation(
+        summary = "Privileged operation. Ending another user's session",
+        security = [SecurityRequirement(name = "bearerAuth")]
+    )
+    @ApiResponses(
+        value = [
+            ApiResponse(
+                responseCode = "200", description = "Successful end of the session"
+            ),
+            ApiResponse(
+                responseCode = "400", description = "The user with the specified username was not found",
+                content = [Content()]
+            ),
+            ApiResponse(
+                responseCode = "401", description = "Token expired",
+                content = [Content()]
+            ),
+            ApiResponse(
+                responseCode = "403", description = "Permission denied",
+                content = [Content()]
+            ),
+            ApiResponse(
+                responseCode = "418", description = "User session disconnected",
+                content = [Content()]
+            )
+        ]
+    )
+    @Parameters(
+        Parameter(
+            name = "Authorization",
+            `in` = ParameterIn.HEADER,
+            example = "teacons",
+        ),
+        Parameter(
+            name = "Authorization",
+            `in` = ParameterIn.HEADER,
+            example = "Bearer token",
+            hidden = true
+        )
+    )
     @PostMapping("/kill")
-    @ResponseStatus(HttpStatus.OK)
     fun kill(
         @RequestHeader("Authorization") authHeader: String,
         @RequestParam(value = "username", required = true)
@@ -126,6 +281,37 @@ class Terminal(
         userInfo.usersStatus.remove(username)
     }
 
+    @Operation(
+        summary = "Sign Out",
+        security = [SecurityRequirement(name = "bearerAuth")]
+    )
+    @ApiResponses(
+        value = [
+            ApiResponse(
+                responseCode = "200", description = "Successful sign out"
+            ),
+            ApiResponse(
+                responseCode = "401", description = "Token expired",
+                content = [Content()]
+            ),
+            ApiResponse(
+                responseCode = "403", description = "User not authorized",
+                content = [Content()]
+            ),
+            ApiResponse(
+                responseCode = "418", description = "User session disconnected",
+                content = [Content()]
+            )
+        ]
+    )
+    @Parameters(
+        Parameter(
+            name = "Authorization",
+            `in` = ParameterIn.HEADER,
+            example = "Bearer token",
+            hidden = true
+        )
+    )
     @PostMapping("/logout")
     @ResponseStatus(HttpStatus.OK)
     fun logout(@RequestHeader("Authorization") authHeader: String) {
@@ -141,8 +327,36 @@ class Terminal(
 
     }
 
-    @GetMapping("/auth")
-    @ResponseStatus(HttpStatus.OK)
+
+    @Operation(summary = "Performs user authorization by username and password")
+    @ApiResponses(
+        value = [
+            ApiResponse(
+                responseCode = "200", description = "Successful authorization"
+            ),
+            ApiResponse(
+                responseCode = "401", description = "Invalid username or password",
+                content = [Content()]
+            ),
+            ApiResponse(
+                responseCode = "403", description = "User already exists",
+                content = [Content()]
+            )
+        ]
+    )
+    @Parameters(
+        Parameter(
+            name = "username",
+            `in` = ParameterIn.QUERY,
+            example = "teacons"
+        ),
+        Parameter(
+            name = "password",
+            `in` = ParameterIn.QUERY,
+            example = "123456"
+        )
+    )
+    @GetMapping("/auth", produces = ["application/json"])
     fun auth(
         @RequestParam(value = "username", required = true)
         username: String,
@@ -180,6 +394,10 @@ class Terminal(
 data class AuthResponse(
     val token: String,
     val currentDir: String
+)
+
+data class CdResponse(
+    val path: String
 )
 
 data class MyUser(
