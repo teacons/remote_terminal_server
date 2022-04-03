@@ -1,0 +1,180 @@
+openapi: 3.0.1
+info:
+  title: Terminal Api
+  version: v1
+servers:
+  - url: http://localhost:8080
+    description: Generated server url
+paths:
+  /term/logout:
+    post:
+      tags:
+        - terminal
+      summary: Sign Out
+      operationId: logout
+      responses:
+        "200":
+          description: Successful sign out
+        "401":
+          description: Token expired
+        "403":
+          description: User not authorized
+        "418":
+          description: User session disconnected
+      security:
+        - bearerAuth: [ ]
+  /term/kill:
+    post:
+      tags:
+        - terminal
+      summary: Privileged operation. Ending another user's session
+      operationId: kill
+      parameters:
+        - name: username
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "403":
+          description: Permission denied
+        "401":
+          description: Token expired
+        "200":
+          description: Successful end of the session
+        "400":
+          description: The user with the specified username was not found
+        "418":
+          description: User session disconnected
+      security:
+        - bearerAuth: [ ]
+  /term/who:
+    get:
+      tags:
+        - terminal
+      summary: Issuing a list of registered users indicating their current directory
+      operationId: who
+      responses:
+        "401":
+          description: Token expired
+        "200":
+          description: Successfully returned a list of user sessions
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  type: string
+        "403":
+          description: User not authorized
+        "418":
+          description: User session disconnected
+      security:
+        - bearerAuth: [ ]
+  /term/ls:
+    get:
+      tags:
+        - terminal
+      summary: List current directory
+      operationId: ls
+      responses:
+        "401":
+          description: Token expired
+        "403":
+          description: User not authorized
+        "200":
+          description: Successful directory list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+        "418":
+          description: User session disconnected
+      security:
+        - bearerAuth: [ ]
+  /term/cd:
+    get:
+      tags:
+        - terminal
+      summary: Change current directory
+      operationId: cd
+      parameters:
+        - name: dir
+          in: query
+          required: true
+          schema:
+            type: string
+          example: C:/Users/Admin
+      responses:
+        "400":
+          description: Wrong directory
+        "200":
+          description: Successful directory change
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CdResponse'
+        "401":
+          description: Token expired
+        "403":
+          description: User not authorized
+        "418":
+          description: User session disconnected
+      security:
+        - bearerAuth: [ ]
+  /term/auth:
+    get:
+      tags:
+        - terminal
+      summary: Performs user authorization by username and password
+      operationId: auth
+      parameters:
+        - name: username
+          in: query
+          required: true
+          schema:
+            type: string
+          example: teacons
+        - name: password
+          in: query
+          required: true
+          schema:
+            type: string
+          example: 123456
+      responses:
+        "403":
+          description: User already exists
+        "401":
+          description: Invalid username or password
+        "200":
+          description: Successful authorization
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+components:
+  schemas:
+    CdResponse:
+      required:
+        - path
+      type: object
+      properties:
+        path:
+          type: string
+    AuthResponse:
+      required:
+        - currentDir
+        - token
+      type: object
+      properties:
+        token:
+          type: string
+        currentDir:
+          type: string
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
